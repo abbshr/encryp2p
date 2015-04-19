@@ -3,8 +3,15 @@ require "json"
 
 require_relative "../util"
 include Util
-while data = gets
-  s = TCPSocket.new "localhost", 2333
-  s.write generate_packet data
-  p s.recv 1460
-end
+
+s = TCPSocket.new "localhost", 2333
+
+Thread.new {
+  loop { 
+    packet, err = parse_packet(s)
+    puts packet
+    s = TCPSocket.new "localhost", 2333 if err == :closed
+  }
+}
+
+loop { s.write generate_packet gets.chomp }
