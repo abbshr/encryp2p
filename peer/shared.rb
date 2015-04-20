@@ -1,6 +1,6 @@
 require "socket"
 require "openssl"
-require_relative "handle"
+require_relative "d_handle"
 require_relative "../util"
 
 include Util
@@ -14,11 +14,14 @@ Socket.tcp_server_loop 666 do |socket, client_addrinfo|
       # fetch the command & handle it
       case packet[:cmd]
       when 'auth'
-        res = handle_auth packet
+        cert = handle_auth packet
+        res = { :res => "auth", :cert => cert }
       when 'sync'
-        res = handle_sync packet
+        key, iv, hash = handle_sync packet
+        res = { :sync => TRUE, :res => "sync" }
       when 'fetch'
-        res = handle_fetch packet
+        encrypted = handle_fetch packet, key, iv, hash
+        res = { :res => "fetch", :data => encrypted }
       else
         res = { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
       end
@@ -26,7 +29,6 @@ Socket.tcp_server_loop 666 do |socket, client_addrinfo|
       puts res
       # response to node-client
       socket.write generate_packet res
-      socket.close
     end
   }
 end

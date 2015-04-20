@@ -23,12 +23,16 @@ Socket.tcp_server_loop 2333 do |socket, client_addrinfo|
       case packet[:cmd]
       when 'registy'
         res = handle_registy packet
+        res.merge :res => "registy"
       when 'push'
         res = handle_push packet
+        res.merge :res => "push"
       when 'pull'
         res = handle_pull packet
+        res.merge :res => "pull"
       when 'list'
         res = handle_list packet
+        res.merge :res => "list"
       else
         res = { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
       end
@@ -36,7 +40,6 @@ Socket.tcp_server_loop 2333 do |socket, client_addrinfo|
       puts res
       # response to node-client
       socket.write generate_packet res
-      #socket.close
     end
   }
 end

@@ -1,5 +1,6 @@
 require "redis-objects"
 require "redis"
+require "json"
 
 class RedisStorage
   include Redis::Objects
