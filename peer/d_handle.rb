@@ -26,7 +26,7 @@ module Handle
   def handle_fetch data, key, iv, hash
     target = data[:filename]
     raw = File.read "./share/#{target}"
-    digest = OpenSSL::Digest.new hash 
+    digest = OpenSSL::Digest.new hash
     signature = PRIVATE_KEY.sign digest, raw
     # encrypt the signature and rawdata using AES
     cipher = OpenSSL::Cipher.new "AES-256-CBC"

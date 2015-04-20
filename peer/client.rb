@@ -14,7 +14,12 @@ puts "[#{connection.ip_address}:#{connection.ip_port}] connection established"
 Thread.new {
   while recv = parse_packet(index)
     packet, err = recv
-    raise "lose connection, exit" if err == :closed
+    
+    if err == :closed
+      puts "lose connection, process exit"
+      Process.exit
+    end
+
     case packet[:res]
     when "registy"
       # save the cert
@@ -91,26 +96,40 @@ Thread.new {
 }
 
 # block the main thread
-print "commands:>_"
-cmd = gets.chomp
-# public commands list
-case cmd
-# self registy, get a cert from index server
-when "registy"
-  pub_key = handle_registy
-  req = { :cmd => cmd, :pub_key => pub_key }
-when "push"
-  filename = gets.chomp
-  req = handle_push filename
-  req.merge :cmd => cmd
-when "pull"
-  filename = gets.chomp
-  req = handle_pull filename
-  req.merge :cmd => cmd
-when "list"
-  req = { :cmd => cmd }
-else
-  req = { :cmd => "private" }
+loop do
+  print "command >"
+  cmd = gets.chomp
+  # public commands list
+  case cmd
+  # self registy, get a cert from index server
+  when "registy"
+    pub_key = handle_registy
+    req = { :cmd => cmd, :pub_key => pub_key }
+    index.write generate_packet JSON.generate req
+  when "push"
+    print "filename >"
+    filename = gets.chomp
+    req = handle_push filename
+    req.merge :cmd => cmd
+    index.write generate_packet JSON.generate req
+  when "pull"
+    filename = gets.chomp
+    req = handle_pull filename
+    req.merge :cmd => cmd
+    index.write generate_packet JSON.generate req
+  when "list"
+    req = { :cmd => cmd }
+    index.write generate_packet JSON.generate req
+  else
+    puts <<EOF
+    INDEX-PEER PUBLIC COMMANDS HELP
+    ===============
+    registy - apply a cert from index
+    push    - publish a shared file meta info to index
+      * filename
+    pull    - download a shared file from peer
+      * filename
+    list    - list all shared files
+EOF
+  end
 end
-
-index.write generate_packet JSON.generate req
