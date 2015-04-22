@@ -17,28 +17,28 @@ class RedisStorage
 
   def self::find_one origin
     return nil unless self::exist? origin
-    Redis::HashKey.new("redis_storage:#{origin}:entry").all
+    entry = Redis::HashKey.new("redis_storage:#{origin}:entry").all
+    JSON.parse(JSON.generate(entry), :symbolize_names => true)
   end
 
   def self::find filename
     return nil unless self::exist? "*/#{filename}"
     redis.keys("redis_storage:*/#{filename}:entry").map do |e|
-      entry = Redis::HashKey.new e
+      JSON.parse(JSON.generate(Redis::HashKey.new(e).all), :symbolize_names => true)
     end
   end
 
   def self::list 
     redis.keys("redis_storage:*").map do |e|
-      enrty = Redis::HashKey.new e
+      JSON.parse(JSON.generate(Redis::HashKey.new(e).all), :symbolize_names => true)
     end
   end
 
   def initialize data
     @origin = "#{data[:ip]}-#{data[:port]}/#{data[:filename]}"
-    @entry = Redis::HashKey.new("#{prefix}#{origin}:entry")
+    @entry = Redis::HashKey.new("#{prefix}#{@origin}:entry")
     @entry[:filename] = data[:filename]
     @entry[:size] = data[:size]
-    @entry[:type] = data[:type]
     @entry[:ip] = data[:ip]
     @entry[:port] = data[:port]
     @entry[:peer] = "#{data[:ip]}-#{data[:port]}"
@@ -49,7 +49,7 @@ class RedisStorage
   end
 
   def get
-    @entry.all
+    JSON.parse JSON.generate(@entry.all), :symbolize_names => true
   end
 
   def set_origin origin

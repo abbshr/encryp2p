@@ -6,9 +6,7 @@ module Handle
 
   # return with the signed-cert string
   def handle_registy data
-    subject = "#{data[:ip]}-#{data[:port]}"
-    pub_key = data[:pub_key]
-    { :cert => Cert::issue(subject, pub_key) }
+    Cert::issue "#{data[:ip]}-#{data[:port]}", data[:pub_key]
   end
   
   def handle_push data
@@ -21,10 +19,6 @@ module Handle
 
   # return the CA pub_key & availiable src list
   def handle_pull data
-    {
-      :srcs => RedisStorage::find(data[:filename]),
-      #RedisStorage::find_one data[:origin]
-      :pub_key => Cert::pub_key
-    }
+    [RedisStorage::find(data[:filename]) , Cert::pub_key]
   end
 end

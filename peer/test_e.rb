@@ -1,6 +1,8 @@
 require "openssl"
 
-data = "Very, very confidential data"
+data = File.read "share/wp_arc_005.jpg"
+f = data.unpack "H*"
+data=f[0]
 
 cipher = OpenSSL::Cipher::AES.new(128, :CBC)
 cipher.encrypt
@@ -18,4 +20,4 @@ decipher.iv = iv
 
 plain = decipher.update(encrypted) + decipher.final
 
-puts data, plain #=> true
+puts data == plain #=> true

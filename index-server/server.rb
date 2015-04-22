@@ -15,29 +15,27 @@ include Handle
 Socket.tcp_server_loop 2333 do |socket, client_addrinfo|
   # index server core logic
   Thread.new {
-    while (recv = parse_packet(socket))
+    while recv = parse_packet(socket)
       packet, err = recv
-      packet.merge! :ip => client_addrinfo.ip_address, :port => client_addrinfo.ip_port
+      Thread.exit if err == :closed
+      packet.merge! :ip => client_addrinfo.ip_address
       puts packet
       # fetch the command & handle it
-      case packet[:cmd]
+      res = case packet[:cmd]
       when 'registy'
-        res = handle_registy packet
-        res.merge :res => "registy"
+        cert = handle_registy packet
+        { :res => "registy", :cert => cert }
       when 'push'
-        res = handle_push packet
-        res.merge :res => "push"
+        handle_push(packet).merge :res => "push"
       when 'pull'
-        res = handle_pull packet
-        res.merge :res => "pull"
+        srcs, pub_key = handle_pull packet
+        { :res => "pull", :srcs => srcs, :pub_key => pub_key }
       when 'list'
-        res = handle_list packet
-        res.merge :res => "list"
+        list = handle_list packet
+        { :res => "list", :list => list }
       else
-        res = { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
+        { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
       end
-      res = JSON.generate res
-      puts res
       # response to node-client
       socket.write generate_packet res
     end

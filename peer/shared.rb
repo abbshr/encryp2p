@@ -4,30 +4,29 @@ require_relative "d_handle"
 require_relative "../util"
 
 include Util
+include Handle
 
-Socket.tcp_server_loop 666 do |socket, client_addrinfo|
+Socket.tcp_server_loop 6666 do |socket, client_addrinfo|
   Thread.new {
     while (recv = parse_packet(socket))
       packet, err = recv
+      Thread.exit if err == :closed
       packet.merge! :ip => client_addrinfo.ip_address, :port => client_addrinfo.ip_port    
-      puts packet
       # fetch the command & handle it
-      case packet[:cmd]
+      res = case packet[:cmd]
       when 'auth'
-        cert = handle_auth packet
-        res = { :res => "auth", :cert => cert }
+        { :res => "auth", :cert => handle_auth(packet) }
       when 'sync'
         key, iv, hash = handle_sync packet
-        res = { :sync => TRUE, :res => "sync" }
+        { :sync => TRUE, :res => "sync" }
       when 'fetch'
         encrypted = handle_fetch packet, key, iv, hash
-        res = { :res => "fetch", :data => encrypted }
+        { :res => "fetch", :data => encrypted }
       else
-        res = { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
+        { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
       end
-      res = JSON.generate res
-      puts res
       # response to node-client
+      puts res
       socket.write generate_packet res
     end
   }

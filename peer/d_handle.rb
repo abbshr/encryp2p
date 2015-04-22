@@ -1,8 +1,9 @@
 require "openssl"
+require "base64"
 
 module Handle
 
-  PRIVATE_KEY = OpenSSL::PKey::RSA.new File.read "./id.key"
+  PRIVATE_KEY = OpenSSL::PKey::RSA.new File.read "./id.pem"
   CERTIFICATE = OpenSSL::X509::Certificate.new File.read "./cert.cer"
 
   # return the cert issued from CA index-server
@@ -17,23 +18,22 @@ module Handle
     hash = data[:hash]
     # decrypt the data using the private key
     [
-      PRIVATE_KEY.private_decrypt enc_key, 
-      PRIVATE_KEY.private_decrypt enc_iv, 
-      PRIVATE_KEY.private_decrypt hash
+      PRIVATE_KEY.private_decrypt(enc_key.pack("H*")),
+      PRIVATE_KEY.private_decrypt(enc_iv.pack("H*")),
+      PRIVATE_KEY.private_decrypt(hash.pack("H*"))
     ]
   end
 
   def handle_fetch data, key, iv, hash
-    target = data[:filename]
-    raw = File.read "./share/#{target}"
+    raw = Base64.encode64 File.read "./share/#{data[:filename]}"
     digest = OpenSSL::Digest.new hash
-    signature = PRIVATE_KEY.sign digest, raw
+    signature = Base64.encode64 PRIVATE_KEY.sign digest, raw
     # encrypt the signature and rawdata using AES
     cipher = OpenSSL::Cipher.new "AES-256-CBC"
     # encrypt mode
     cipher.encrypt
     cipher.key = key
     cipher.iv = iv
-    cipher.update("#{raw}\r\n#{signature}") + cipher.final
+    Base64.encode64(cipher.update("#{raw}\r\n#{signature}") + cipher.final)
   end
 end
