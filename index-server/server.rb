@@ -7,37 +7,37 @@ require "socket"
 require "json"
 
 require_relative "handle"
-require_relative "../util"
+require_relative "../encp"
 
-include Util
 include Handle
 
 Socket.tcp_server_loop 2333 do |socket, client_addrinfo|
   # index server core logic
   Thread.new {
-    while recv = parse_packet(socket)
-      packet, err = recv
+    encp = Encp.new
+
+    while recv = encp.parse(socket)
+      head, data, err = recv
       Thread.exit if err == :closed
-      packet.merge! :ip => client_addrinfo.ip_address
-      puts packet
+      head.merge! :ip => client_addrinfo.ip_address
       # fetch the command & handle it
-      res = case packet[:cmd]
+      res = case head[:cmd]
       when 'registy'
-        cert = handle_registy packet
+        cert = handle_registy head
         { :res => "registy", :cert => cert }
       when 'push'
-        handle_push(packet).merge :res => "push"
+        handle_push(head).merge :res => "push"
       when 'pull'
-        srcs, pub_key = handle_pull packet
+        srcs, pub_key = handle_pull head
         { :res => "pull", :srcs => srcs, :pub_key => pub_key }
       when 'list'
-        list = handle_list packet
+        list = handle_list head
         { :res => "list", :list => list }
       else
-        { :err => TRUE, :msg => "Invaild Command `#{packet[:cmd]}`" }
+        { :err => TRUE, :msg => "Invaild Command `#{head[:cmd]}`" }
       end
       # response to node-client
-      socket.write generate_packet res
+      socket.write encp.generate res
     end
   }
 end

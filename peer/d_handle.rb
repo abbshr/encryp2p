@@ -12,28 +12,36 @@ module Handle
   end
 
   # return the random key for AES and hash algorithm
-  def handle_sync data
-    enc_key = data[:key]
-    enc_iv = data[:iv]
-    hash = data[:hash]
-    # decrypt the data using the private key
-    [
-      PRIVATE_KEY.private_decrypt(enc_key.pack("H*")),
-      PRIVATE_KEY.private_decrypt(enc_iv.pack("H*")),
-      PRIVATE_KEY.private_decrypt(hash.pack("H*"))
-    ]
+  # decrypt the data using the private key
+
+  def handle_sync_key enc_key
+    PRIVATE_KEY.private_decrypt enc_key
   end
 
-  def handle_fetch data, key, iv, hash
-    raw = Base64.encode64 File.read "./share/#{data[:filename]}"
+  def handle_sync_iv enc_iv
+    PRIVATE_KEY.private_decrypt enc_iv
+  end
+
+  def handle_sync_hash enc_hash
+    PRIVATE_KEY.private_decrypt enc_hash
+  end
+
+  def handle_fetch head, key, iv, hash
+    raw = File.binread "./share/#{head[:filename]}"
     digest = OpenSSL::Digest.new hash
-    signature = Base64.encode64 PRIVATE_KEY.sign digest, raw
+    signature = PRIVATE_KEY.sign digest, raw
+    File.binwrite "sign", signature
     # encrypt the signature and rawdata using AES
     cipher = OpenSSL::Cipher.new "AES-256-CBC"
     # encrypt mode
     cipher.encrypt
     cipher.key = key
     cipher.iv = iv
-    Base64.encode64(cipher.update("#{raw}\r\n#{signature}") + cipher.final)
+    [signature, cipher.update(raw) + cipher.final]
   end
+
+  def handle_fetch_sign signature, key, iv
+    signature
+  end
+
 end

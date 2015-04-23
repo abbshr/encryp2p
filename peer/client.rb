@@ -8,9 +8,8 @@ require "openssl"
 require "base64"
 
 require_relative "handle"
-require_relative "../util"
+require_relative "../encp"
 
-include Util
 include Handle
 
 begin
@@ -21,37 +20,40 @@ rescue Exception => e
   Process.exit
 end
 
+encp = Encp.new
+
 puts "[#{connection.ip_address}:#{connection.ip_port} - ] connection established"
 print "command >"
 
 Thread.new {
   loop do
-    packet, err = parse_packet(index)
+    head, data, err = encp.parse(index)
     
     if err == :closed
       puts "lose connection, process exit"
       Process.exit
     end
-    case packet[:res]
+
+    case head[:res]
     when "registy"
       # save the cert
-      File.write "cert.cer", OpenSSL::X509::Certificate.new(packet[:cert]).to_der
+      File.write "cert.cer", OpenSSL::X509::Certificate.new(head[:cert]).to_der
       puts "registy successfully, cert has been saved"
       print "command >"
     when "push"
       puts "your shared resource has been accepted by index peer"
       puts "meta Info:"
       puts "=========="
-      puts "filename:\t#{packet[:filename]}"
-      puts "size:\t#{packet[:size]} Bytes"
-      puts "origin:\t#{packet[:ip]}:#{packet[:port]}"
+      puts "filename:\t#{head[:filename]}"
+      puts "size:\t#{head[:size]} Bytes"
+      puts "origin:\t#{head[:ip]}:#{head[:port]}"
       puts "=========="
       print "command >"
     when "pull"
       # get the CA public key
-      ca_pub_key = OpenSSL::PKey::RSA.new packet[:pub_key]
+      ca_pub_key = OpenSSL::PKey::RSA.new head[:pub_key]
       # select a avaliable connection
-      entry = packet[:srcs].find do |entry|
+      entry = head[:srcs].find do |entry|
         peer_ip = entry[:ip]
         peer_port = entry[:port].to_i
         filename = entry[:filename]
@@ -60,49 +62,63 @@ Thread.new {
           # call the target peer
           peer = TCPSocket.new peer_ip, peer_port
           puts "connect to peer [#{peer_ip}:#{peer_port}]"
+          sub_encp = Encp.new
         # state: 0
           # request to peer's cert
-          peer.write generate_packet :cmd => 'auth'
+          peer.write encp.generate :cmd => 'auth'
           # waiting for response
-          while recv = parse_packet(peer)
-            packet, err = recv
+          while recv = sub_encp.parse(peer)
+            head, data, err = recv
             raise "Connection Reset by Peer" if err == :closed
 
-            case packet[:res]
+            case head[:res]
             when "auth"
-              cert = OpenSSL::X509::Certificate.new packet[:cert]
+              cert = OpenSSL::X509::Certificate.new head[:cert]
               raise "Verify failed" unless cert.verify ca_pub_key
               # get the peer public key
               pub_key = cert.public_key
+              File.write "pk", pub_key.export
             # state: 1
               # create & sync key, iv, hash
               decipher = OpenSSL::Cipher::AES256.new :CBC
               decipher.decrypt
-              hash = pub_key.public_encrypt("SHA1").unpack "H*"
-              key = decipher.random_key.unpack("H*")[0]
-              iv = decipher.random_iv.unpack("H*")[0]
-              decipher.key = key
-              decipher.iv = iv
-              key = pub_key.public_encrypt(key).unpack "H*"
-              iv = pub_key.public_encrypt(iv).unpack "H*"
-              req = { :cmd => 'sync', :key => key, :iv => iv, :hash => hash }
-              peer.write generate_packet req
-            when "sync"
-              # for SYNC ACK packet
-              raise "Unexpection error" unless packet[:sync]
+              key = decipher.random_key
+              File.binwrite "key-c", key
+              key = pub_key.public_encrypt key
+              req = { :cmd => 'sync_key' }
+              peer.write sub_encp.generate req, key
+            when "sync_key"
+              # for SYNC KEY ACK packet
+              raise "Unexpection error" unless head[:sync]
+              iv = decipher.random_iv
+              File.binwrite "iv-c", iv
+              iv = pub_key.public_encrypt iv
+              req = { :cmd => 'sync_iv' }
+              peer.write sub_encp.generate req, iv
+            when "sync_iv"
+              # for SYNC IV ACK packet
+              raise "Unexpection error" unless head[:sync]
+              hash = pub_key.public_encrypt "SHA1"
+              req = { :cmd => 'sync_hash' }
+              peer.write sub_encp.generate req, hash
+            when "sync_hash"
+              # for SYNC HASH ACK packet
+              raise "Unexpection error" unless head[:sync]
             # state: 2
               puts "fetching the resource..."
               req = { :cmd => "fetch", :filename => filename }
-              peer.write generate_packet req
+              peer.write sub_encp.generate req
             when "fetch"
-              plain = decipher.update(Base64.decode64(packet[:data])) + decipher.final
-              raw, signature = plain.split "\r\n"
+              plain = decipher.update(data) + decipher.final
+              # request for signature
+              req = { :cmd => "fetch_sign" }
+              peer.write sub_encp.generate req
+            when "fetch_sign"
+              signature = data
               digest = OpenSSL::Digest::SHA1.new
-              raw = Base64.decode64 raw
-              signature = Base64.decode64 signature
-              #raise "Invalid data" unless pub_key.verify digest, signature, raw
+              raise "Invalid data" unless pub_key.verify digest, signature, plain
               # save the raw data
-              File.write "./receive/#{filename}", raw
+              File.binwrite "./receive/#{filename}", plain
               puts "#{filename} from #{peer_ip}:#{peer_port} has been saved"
               # break the polling
               break
@@ -121,7 +137,7 @@ Thread.new {
       print "command >"
     when "list"
       puts "FileName\t\tSize(B)\t\tSource"
-      packet[:list].each { |e| puts "#{e[:filename]}\t#{e[:size]}\t#{e[:ip]}" }
+      head[:list].each { |e| puts "#{e[:filename]}\t#{e[:size]}\t#{e[:ip]}" }
       print "command >"
     end
   end
@@ -135,18 +151,18 @@ loop do
   # self registy, get a cert from index server
   when "registy"
     pub_key = handle_registy
-    index.write generate_packet :cmd => cmd, :pub_key => pub_key, :port => 6666
+    index.write encp.generate :cmd => cmd, :pub_key => pub_key, :port => 6666
   when "push"
     print "filename >"
     filename = gets.chomp
     size = handle_push filename
-    index.write generate_packet :size => size, :filename => filename, :cmd => cmd, :port => 6666
+    index.write encp.generate :size => size, :filename => filename, :cmd => cmd, :port => 6666
   when "pull"
     print "filename >"
     filename = gets.chomp
-    index.write generate_packet :cmd => cmd, :filename => filename
+    index.write encp.generate :cmd => cmd, :filename => filename
   when "list"
-    index.write generate_packet :cmd => cmd
+    index.write encp.generate :cmd => cmd
   when "exit"
     index.close
     Process.exit
