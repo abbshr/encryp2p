@@ -18,12 +18,15 @@ Socket.tcp_server_loop 6666 do |socket, client_addrinfo|
         { :res => "auth", :cert => handle_auth(head) }
       when 'sync_key'
         key = handle_sync_key data
+        #puts "SYNC_KEY: KEY", key
         { :sync => TRUE, :res => "sync_key" }
       when 'sync_iv'
         iv = handle_sync_iv data
+        #puts "SYNC_IV: IV", iv
         { :sync => TRUE, :res => "sync_iv" }
       when 'sync_hash'
         hash = handle_sync_hash data
+        #puts "SYNC_HASH: HASH", hash
         { :sync => TRUE, :res => "sync_hash" }
       when 'fetch'
         signature, data = handle_fetch head, key, iv, hash

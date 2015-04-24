@@ -5,7 +5,6 @@ end
 
 require "socket"
 require "openssl"
-require "base64"
 
 require_relative "handle"
 require_relative "../encp"
@@ -38,6 +37,7 @@ Thread.new {
     when "registy"
       # save the cert
       File.write "cert.cer", OpenSSL::X509::Certificate.new(head[:cert]).to_der
+      #puts "REGISTY: PEER CERT", head[:cert]
       puts "registy successfully, cert has been saved"
       print "command >"
     when "push"
@@ -52,6 +52,7 @@ Thread.new {
     when "pull"
       # get the CA public key
       ca_pub_key = OpenSSL::PKey::RSA.new head[:pub_key]
+      puts "PULL: CA PUBLIC KEY", ca_pub_key
       # select a avaliable connection
       entry = head[:srcs].find do |entry|
         peer_ip = entry[:ip]
@@ -74,32 +75,32 @@ Thread.new {
             case head[:res]
             when "auth"
               cert = OpenSSL::X509::Certificate.new head[:cert]
+              puts "AUTH: CERT", cert
               raise "Verify failed" unless cert.verify ca_pub_key
               # get the peer public key
               pub_key = cert.public_key
-              File.write "pk", pub_key.export
+              #puts "AUTH: PEER PUBLIC KEY", pub_key.export
             # state: 1
               # create & sync key, iv, hash
               decipher = OpenSSL::Cipher::AES256.new :CBC
               decipher.decrypt
-              key = decipher.random_key
-              File.binwrite "key-c", key
-              key = pub_key.public_encrypt key
+              key = pub_key.public_encrypt decipher.random_key
               req = { :cmd => 'sync_key' }
+              #puts "SYNC_KEY: KEY", key
               peer.write sub_encp.generate req, key
             when "sync_key"
               # for SYNC KEY ACK packet
               raise "Unexpection error" unless head[:sync]
-              iv = decipher.random_iv
-              File.binwrite "iv-c", iv
-              iv = pub_key.public_encrypt iv
+              iv = pub_key.public_encrypt decipher.random_iv
               req = { :cmd => 'sync_iv' }
+              #puts "SYNC_IV: IV", iv
               peer.write sub_encp.generate req, iv
             when "sync_iv"
               # for SYNC IV ACK packet
               raise "Unexpection error" unless head[:sync]
               hash = pub_key.public_encrypt "SHA1"
               req = { :cmd => 'sync_hash' }
+              #puts "SYNC_HASH: HASH", hash
               peer.write sub_encp.generate req, hash
             when "sync_hash"
               # for SYNC HASH ACK packet
@@ -138,6 +139,9 @@ Thread.new {
     when "list"
       puts "FileName\t\tSize(B)\t\tSource"
       head[:list].each { |e| puts "#{e[:filename]}\t#{e[:size]}\t#{e[:ip]}" }
+      print "command >"
+    else
+      puts head[:msg]
       print "command >"
     end
   end

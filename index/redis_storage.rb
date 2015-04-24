@@ -22,7 +22,6 @@ class RedisStorage
   end
 
   def self::find filename
-    return nil unless self::exist? "*/#{filename}"
     redis.keys("redis_storage:*/#{filename}:entry").map do |e|
       JSON.parse(JSON.generate(Redis::HashKey.new(e).all), :symbolize_names => true)
     end

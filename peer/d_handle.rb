@@ -1,5 +1,4 @@
 require "openssl"
-require "base64"
 
 module Handle
 
@@ -30,7 +29,6 @@ module Handle
     raw = File.binread "./share/#{head[:filename]}"
     digest = OpenSSL::Digest.new hash
     signature = PRIVATE_KEY.sign digest, raw
-    File.binwrite "sign", signature
     # encrypt the signature and rawdata using AES
     cipher = OpenSSL::Cipher.new "AES-256-CBC"
     # encrypt mode

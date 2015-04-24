@@ -1,6 +1,6 @@
 require "openssl"
 
-root_key = OpenSSL::PKey::RSA.new 2048 # the CA's public/private key
+root_key = OpenSSL::PKey::RSA.new File.read "CA.pem" # the CA's public/private key
 root_ca = OpenSSL::X509::Certificate.new
 root_ca.version = 2 # cf. RFC 5280 - to make it a "v3" certificate
 root_ca.serial = 1

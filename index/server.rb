@@ -24,7 +24,8 @@ Socket.tcp_server_loop 2333 do |socket, client_addrinfo|
       res = case head[:cmd]
       when 'registy'
         cert = handle_registy head
-        { :res => "registy", :cert => cert }
+        #puts "REGISTY: PEER PUBLIC KEY", head[:pub_key]
+        { :res => "registy", :cert => cert } 
       when 'push'
         handle_push(head).merge :res => "push"
       when 'pull'
